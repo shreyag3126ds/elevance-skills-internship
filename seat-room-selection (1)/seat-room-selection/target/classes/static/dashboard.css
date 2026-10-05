@@ -1,0 +1,39 @@
+* { box-sizing: border-box; }
+body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #f4f6fa; color: #1a2233; }
+header { display: flex; align-items: center; gap: 16px; padding: 16px 28px; background: #1d3557; color: #fff; }
+header h1 { font-size: 22px; margin: 0; flex: 1; }
+header input { padding: 4px 8px; border-radius: 4px; border: 0; }
+#live { color: #4ade80; font-size: 13px; }
+main { max-width: 1050px; margin: 0 auto; padding: 24px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.card { background: #fff; border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card.accent { background: #e76f00; color: #fff; }
+.card .label { font-size: 13px; opacity: .75; }
+.card .value { font-size: 40px; font-weight: 700; margin: 4px 0; }
+.card .sub { font-size: 13px; opacity: .75; }
+
+.actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 20px 0; }
+.action { display: block; text-decoration: none; color: inherit; background: #fff; border-radius: 12px; padding: 24px; border-top: 5px solid #1d3557; box-shadow: 0 1px 3px rgba(0,0,0,.08); transition: transform .15s, box-shadow .15s; }
+.action:hover { transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.12); }
+.action.hotel { border-top-color: #7c3aed; }
+.action .icon { font-size: 34px; }
+.action h2 { margin: 8px 0; font-size: 20px; }
+.action p { margin: 0 0 14px; color: #475569; font-size: 14px; }
+.action .go { font-weight: 600; color: #e76f00; }
+
+.panel { background: #fff; border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.panel h3 { margin: 0 0 12px; font-size: 16px; }
+.panel.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.muted { color: #64748b; font-size: 14px; }
+
+.booking { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eef2f7; }
+.booking:last-child { border-bottom: 0; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; margin-right: 8px; background: #dbeafe; }
+.pill.ROOM { background: #ede9fe; }
+
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 14px; }
+.bar-row .name { width: 120px; text-transform: lowercase; }
+.bar { flex: 1; height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: #1d3557; }
+.bar-row .n { width: 28px; text-align: right; font-weight: 600; }

@@ -1,0 +1,19 @@
+### Get all bookings
+GET http://localhost:8080/api/bookings
+
+### Cancel booking 3 (within 24h -> 50% refund)
+POST http://localhost:8080/api/bookings/3/cancel
+Content-Type: application/json
+
+{
+  "reason": "CHANGE_OF_PLANS"
+}
+
+### Check refund status for booking 3
+GET http://localhost:8080/api/refunds/booking/3
+
+### Move refund 1 to PROCESSED
+PATCH http://localhost:8080/api/refunds/1/process
+
+### Move refund 1 to COMPLETED
+PATCH http://localhost:8080/api/refunds/1/complete

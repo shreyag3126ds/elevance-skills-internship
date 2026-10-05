@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Booking Dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    padding: 30px;
+    color: #1f2937;
+  }
+  h1 { margin-bottom: 4px; }
+  p.subtitle { color: #6b7280; margin-top: 0; }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+  th { color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 12px; }
+  .badge {
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  .badge.ACTIVE { background:#dbeafe; color:#1d4ed8; }
+  .badge.CANCELLED { background:#fee2e2; color:#b91c1c; }
+  .badge.PENDING { background:#fef3c7; color:#92400e; }
+  .badge.PROCESSED { background:#e0e7ff; color:#3730a3; }
+  .badge.COMPLETED { background:#dcfce7; color:#166534; }
+  .badge.NOT_APPLICABLE { background:#f3f4f6; color:#6b7280; }
+  button {
+    background:#2563eb; color:#fff; border:none; padding:6px 14px;
+    border-radius:6px; cursor:pointer; font-size:13px;
+  }
+  button:hover { background:#1d4ed8; }
+  button:disabled { background:#9ca3af; cursor:not-allowed; }
+  select { padding:5px; border-radius:6px; border:1px solid #d1d5db; margin-right:6px; }
+  .refund-row td { background:#fafafa; font-size:13px; }
+  .empty { color:#9ca3af; font-style: italic; padding: 12px 0; }
+  .toast {
+    position: fixed; top: 20px; right: 20px; background:#111827; color:#fff;
+    padding:10px 16px; border-radius:8px; font-size:13px; opacity:0; transition:opacity .3s;
+  }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<h1>Booking Dashboard</h1>
+<p class="subtitle">Cancel bookings and track your refund status</p>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Service</th>
+        <th>Amount</th>
+        <th>Reservation Time</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="bookingsBody"></tbody>
+  </table>
+  <div id="emptyMsg" class="empty" style="display:none;">No bookings found.</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = "http://localhost:8080/api";
+const REASONS = ["CHANGE_OF_PLANS","FOUND_A_BETTER_PRICE","EMERGENCY","DISSATISFIED_WITH_SERVICE","BOOKED_BY_MISTAKE","WEATHER_CONDITIONS","OTHER"];
+
+async function loadBookings() {
+  const res = await fetch(`${API}/bookings`);
+  const bookings = await res.json();
+  const body = document.getElementById("bookingsBody");
+  const emptyMsg = document.getElementById("emptyMsg");
+  body.innerHTML = "";
+
+  if (bookings.length === 0) {
+    emptyMsg.style.display = "block";
+    return;
+  }
+  emptyMsg.style.display = "none";
+
+  for (const b of bookings) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${b.id}</td>
+      <td>${b.serviceName}</td>
+      <td>$${Number(b.amount).toFixed(2)}</td>
+      <td>${formatDate(b.reservationTime)}</td>
+      <td><span class="badge ${b.status}">${b.status}</span></td>
+      <td id="action-${b.id}"></td>
+    `;
+    body.appendChild(row);
+
+    const actionCell = document.getElementById(`action-${b.id}`);
+    if (b.status === "ACTIVE") {
+      actionCell.innerHTML = `
+        <select id="reason-${b.id}">
+          ${REASONS.map(r => `<option value="${r}">${prettify(r)}</option>`).join("")}
+        </select>
+        <button onclick="cancelBooking(${b.id})">Cancel</button>
+      `;
+    } else {
+      actionCell.innerHTML = `<button onclick="showRefund(${b.id})">View Refund</button>`;
+    }
+
+    if (b.status === "CANCELLED") {
+      await renderRefundRow(b.id);
+    }
+  }
+}
+
+async function renderRefundRow(bookingId) {
+  try {
+    const res = await fetch(`${API}/refunds/booking/${bookingId}`);
+    if (!res.ok) return;
+    const refund = await res.json();
+
+    const refundRow = document.createElement("tr");
+    refundRow.className = "refund-row";
+    refundRow.id = `refund-row-${bookingId}`;
+    refundRow.innerHTML = `
+      <td colspan="6">
+        &#8627; Refund: $${Number(refund.refundAmount).toFixed(2)}
+        (${refund.refundPercentage}% of $${Number(refund.originalAmount).toFixed(2)})
+        &nbsp;|&nbsp; Reason: ${prettify(refund.reason)}
+        &nbsp;|&nbsp; Status: <span class="badge ${refund.status}">${refund.status}</span>
+        &nbsp;|&nbsp; Expected by: ${formatDate(refund.expectedCompletionAt)}
+        ${refund.status === "PENDING" ? `<button onclick="advanceRefund(${refund.refundId}, 'process')">Mark Processed</button>` : ""}
+        ${refund.status === "PROCESSED" ? `<button onclick="advanceRefund(${refund.refundId}, 'complete')">Mark Completed</button>` : ""}
+      </td>
+    `;
+    document.getElementById("bookingsBody").appendChild(refundRow);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function cancelBooking(id) {
+  const reason = document.getElementById(`reason-${id}`).value;
+  const res = await fetch(`${API}/bookings/${id}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason })
+  });
+  if (res.ok) {
+    showToast("Booking cancelled. Refund initiated.");
+  } else {
+    const err = await res.json();
+    showToast("Error: " + err.message);
+  }
+  loadBookings();
+}
+
+async function advanceRefund(refundId, action) {
+  const res = await fetch(`${API}/refunds/${refundId}/${action}`, { method: "PATCH" });
+  if (res.ok) {
+    showToast(`Refund ${action === "process" ? "processed" : "completed"}.`);
+  } else {
+    const err = await res.json();
+    showToast("Error: " + err.message);
+  }
+  loadBookings();
+}
+
+function showRefund(bookingId) {
+  const el = document.getElementById(`refund-row-${bookingId}`);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function prettify(enumValue) {
+  return enumValue.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
+
+function showToast(msg) {
+  const toast = document.getElementById("toast");
+  toast.textContent = msg;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 3000);
+}
+
+loadBookings();
+</script>
+
+</body>
+</html>

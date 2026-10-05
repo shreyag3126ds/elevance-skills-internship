@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recommended for you</title>
+<style>
+  :root { --bg:#f5f7fb; --card:#fff; --ink:#1d2433; --muted:#667085; --accent:#2563eb; --ok:#16a34a; --bad:#dc2626; --line:#e4e7ec; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; padding:20px 28px; background:var(--card); border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:1.3rem; }
+  select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:.95rem; }
+  main { padding:24px 28px; display:grid; gap:18px; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:10px; }
+  .badge { align-self:flex-start; font-size:.72rem; letter-spacing:.04em; padding:3px 8px; border-radius:999px; background:#eaf1ff; color:var(--accent); }
+  .headline { font-weight:600; font-size:1.02rem; }
+  .meta { color:var(--muted); font-size:.9rem; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .why { position:relative; }
+  .why button.link { background:none; border:none; padding:0; color:var(--accent); font-size:.88rem; cursor:pointer; text-decoration:underline dotted; }
+  .tip { display:none; position:absolute; left:0; top:calc(100% + 8px); width:260px; z-index:5; background:#101828; color:#fff; padding:10px 12px; border-radius:10px; font-size:.84rem; line-height:1.4; }
+  .why:hover .tip, .why:focus-within .tip { display:block; }
+  .actions { display:flex; gap:8px; margin-top:auto; }
+  .actions button { flex:1; padding:8px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; font-size:.9rem; }
+  .actions .up.active { background:var(--ok); color:#fff; border-color:var(--ok); }
+  .actions .down:hover { background:var(--bad); color:#fff; border-color:var(--bad); }
+  .empty { grid-column:1/-1; text-align:center; color:var(--muted); padding:40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Recommended for you</h1>
+  <label>Viewing as <select id="user" aria-label="Select user"></select></label>
+</header>
+<main id="grid"></main>
+<script>
+let userId = null;
+
+async function init() {
+  const users = await (await fetch('/api/users')).json();
+  const sel = document.getElementById('user');
+  users.forEach(u => { const o = document.createElement('option'); o.value = u.id; o.textContent = u.name; sel.appendChild(o); });
+  sel.onchange = () => { userId = sel.value; load(); };
+  userId = users[0].id;
+  load();
+}
+
+async function load() {
+  const recs = await (await fetch('/api/recommendations?userId=' + encodeURIComponent(userId))).json();
+  render(recs);
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function render(recs) {
+  const grid = document.getElementById('grid');
+  grid.replaceChildren();
+  if (!recs.length) { grid.appendChild(el('div', 'empty', 'No more suggestions right now. Check back after more activity.')); return; }
+  recs.forEach(r => {
+    const card = el('div', 'card');
+    card.appendChild(el('span', 'badge', r.type));
+    card.appendChild(el('div', 'headline', r.headline));
+    card.appendChild(el('div', 'meta', r.name + ' · ' + r.location + ' · from $' + r.price));
+
+    const row = el('div', 'row');
+    const why = el('div', 'why');
+    const btn = el('button', 'link', 'Why this recommendation?');
+    btn.type = 'button';
+    why.appendChild(btn);
+    why.appendChild(el('div', 'tip', r.reason));
+    row.appendChild(why);
+    row.appendChild(el('span', 'meta', r.score + '% match'));
+    card.appendChild(row);
+
+    const actions = el('div', 'actions');
+    const up = el('button', 'up' + (r.feedback === 'HELPFUL' ? ' active' : ''), r.feedback === 'HELPFUL' ? 'Helpful ✓' : 'Helpful');
+    const down = el('button', 'down', 'Not relevant');
+    up.onclick = () => send(r.id, 'HELPFUL');
+    down.onclick = () => send(r.id, 'IRRELEVANT');
+    actions.append(up, down);
+    card.appendChild(actions);
+    grid.appendChild(card);
+  });
+}
+
+async function send(itemId, feedback) {
+  await fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ userId, itemId, feedback })
+  });
+  load();
+}
+
+init();
+</script>
+</body>
+</html>

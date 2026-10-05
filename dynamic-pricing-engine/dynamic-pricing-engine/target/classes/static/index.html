@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Pricing Engine</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7385; --line:#e3e6ec; --accent:#2f6fed; --up:#d9480f; --down:#2b8a3e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171d; --card:#1d222b; --text:#e8ebf2; --muted:#9aa3b5; --line:#2c3340; --accent:#6b9bff; --up:#ff8c5a; --down:#5fd17a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:20px 28px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  h1 { font-size:20px; margin:0; }
+  .live { font-size:13px; color:var(--muted); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--down); margin-right:6px; }
+  main { padding:24px 28px; display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; }
+  .type { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .name { font-size:17px; font-weight:600; margin:2px 0; }
+  .date { font-size:13px; color:var(--muted); }
+  .price { font-size:30px; font-weight:700; margin:12px 0 2px; }
+  .price.up { color:var(--up); } .price.down { color:var(--down); }
+  .base { font-size:13px; color:var(--muted); }
+  canvas { width:100%; height:90px; margin:10px 0 4px; display:block; }
+  .chart-label { font-size:12px; color:var(--muted); }
+  ul.breakdown { list-style:none; padding:0; margin:10px 0; font-size:13px; }
+  ul.breakdown li { padding:3px 0; border-bottom:1px dashed var(--line); }
+  .freeze { background:rgba(47,111,237,.1); border:1px solid var(--accent); border-radius:8px; padding:8px 10px; font-size:13px; margin:10px 0; }
+  .actions { display:flex; gap:8px; }
+  button { flex:1; padding:9px 12px; border-radius:8px; border:1px solid var(--accent); background:transparent; color:var(--accent); font-size:14px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:8px; font-size:14px; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dynamic Pricing Engine</h1>
+  <div class="live"><span class="dot"></span>Live - prices update automatically</div>
+</header>
+<main id="grid"></main>
+<div id="toast"></div>
+
+<script>
+let state = { products: [] };
+const lastPrice = {};
+const dir = {};
+const fmt = n => '\u20B9' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const es = new EventSource('/api/stream');
+es.onmessage = e => {
+  state = JSON.parse(e.data);
+  state.products.forEach(p => {
+    if (lastPrice[p.id] !== undefined && p.price !== lastPrice[p.id]) dir[p.id] = p.price > lastPrice[p.id] ? 'up' : 'down';
+    lastPrice[p.id] = p.price;
+  });
+  render();
+};
+
+function render() {
+  const grid = document.getElementById('grid');
+  state.products.forEach(p => {
+    let card = document.getElementById('card-' + p.id);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'card';
+      card.id = 'card-' + p.id;
+      card.innerHTML = `
+        <div class="type"></div><div class="name"></div><div class="date"></div>
+        <div class="price"></div><div class="base"></div>
+        <canvas width="600" height="180"></canvas>
+        <div class="chart-label">Price history (recent)</div>
+        <ul class="breakdown"></ul>
+        <div class="freeze" style="display:none"></div>
+        <div class="actions">
+          <button class="freeze-btn">Freeze price (10 min)</button>
+          <button class="primary book-btn">Book now</button>
+        </div>`;
+      card.querySelector('.freeze-btn').onclick = () => act('/api/freeze', p.id);
+      card.querySelector('.book-btn').onclick = () => act('/api/book', p.id);
+      grid.appendChild(card);
+    }
+    card.querySelector('.type').textContent = p.type;
+    card.querySelector('.name').textContent = p.name;
+    card.querySelector('.date').textContent = 'Travel date: ' + p.travelDate;
+    const priceEl = card.querySelector('.price');
+    priceEl.textContent = fmt(p.price);
+    priceEl.className = 'price ' + (dir[p.id] || '');
+    card.querySelector('.base').textContent = 'Base ' + fmt(p.basePrice) + '  \u2022  x' + p.multiplier.toFixed(2) + ' total';
+    card.querySelector('.breakdown').innerHTML = p.adjustments.length
+      ? p.adjustments.map(a => `<li><b>${a.rule}:</b> ${a.reason}</li>`).join('')
+      : '<li>No adjustments - standard price</li>';
+
+    const fz = card.querySelector('.freeze');
+    const btn = card.querySelector('.freeze-btn');
+    if (p.freeze) {
+      const left = Math.max(0, Math.floor((p.freeze.expiresAt - Date.now()) / 1000));
+      fz.style.display = 'block';
+      fz.textContent = `Price frozen at ${fmt(p.freeze.lockedPrice)} - ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`;
+      btn.disabled = true;
+    } else { fz.style.display = 'none'; btn.disabled = false; }
+
+    drawChart(card.querySelector('canvas'), p);
+  });
+}
+
+function drawChart(canvas, p) {
+  const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height, pad = 8;
+  ctx.clearRect(0, 0, w, h);
+  const pts = p.history; if (pts.length < 2) return;
+  let min = Math.min(...pts.map(x => x[1])), max = Math.max(...pts.map(x => x[1]));
+  if (p.freeze) { min = Math.min(min, p.freeze.lockedPrice); max = Math.max(max, p.freeze.lockedPrice); }
+  if (max === min) max = min + 1;
+  const x = i => pad + i * (w - 2 * pad) / (pts.length - 1);
+  const y = v => h - pad - (v - min) * (h - 2 * pad) / (max - min);
+  const css = getComputedStyle(document.documentElement);
+  if (p.freeze) {
+    ctx.setLineDash([6, 6]); ctx.strokeStyle = css.getPropertyValue('--muted');
+    ctx.beginPath(); ctx.moveTo(pad, y(p.freeze.lockedPrice)); ctx.lineTo(w - pad, y(p.freeze.lockedPrice)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle = css.getPropertyValue('--accent'); ctx.lineWidth = 3; ctx.lineJoin = 'round';
+  ctx.beginPath(); pts.forEach((pt, i) => i ? ctx.lineTo(x(i), y(pt[1])) : ctx.moveTo(x(i), y(pt[1]))); ctx.stroke();
+}
+
+function act(url, id) {
+  fetch(url + '?productId=' + encodeURIComponent(id), { method: 'POST' })
+    .then(r => r.json()).then(j => toast(j.message));
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show';
+  setTimeout(() => t.className = '', 3200);
+}
+
+setInterval(render, 1000);   // keeps freeze countdowns ticking between server updates
+</script>
+</body>
+</html>
